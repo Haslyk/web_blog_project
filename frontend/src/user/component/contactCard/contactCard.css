@@ -1,0 +1,46 @@
+.contact_card {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+}
+
+.dev_image {
+    --f: 0.1;
+    --r: 10px;
+
+    --_f: calc(100% * var(--f)) / (1 + var(--f));
+    --_a: calc(90deg * var(--f));
+
+    width: 180px;
+    height: 180px;
+    aspect-ratio: calc(1 + var(--f));
+    border-radius: 10px;
+    margin-bottom: 18px;
+    object-fit: cover;
+    
+    clip-path: inset(0 var(--_f) 0 0 round var(--r));
+    transform: perspective(400px) var(--_t, rotateY(var(--_a)));
+    transition: all 0.3s ease;
+}
+
+.dev_image:hover {     
+    transform: scale(1.05);
+}
+
+.dev_role {
+    color: gray;
+}
+
+.dev_profile {
+    margin-top: 25px;
+    font-size: 0.9rem;
+    border: 1px solid #b1b6c0;
+    padding: 8px 16px;
+    color: #357dcf;
+    border-radius: 8px;
+}
+
+.dev_profile:hover {
+    background: rgb(249, 227, 227);
+    transition: 150ms ease;
+}

@@ -1,27 +1,15 @@
-import { Router } from "express"
-const router = Router()
+import express from "express"
+const router = express.Router()
 
 import * as authController from '../controllers/authControllers.js'
-import verifyToken, { localVariables } from "../middleware/authorization.js"
-import { registerMail } from "../controllers/mail.js"
 
 
-router.route('/register').post(authController.register)
-router.route('/login').post(authController.login)
-router.route('/registerMail').post(registerMail)
-
-
-
-router.route('/user/:username').get(authController.getUser)
-router.route('/generateOTP').get(authController.verifyUser, localVariables, authController.generateOTP)
-router.route('/verifyOTP').get(authController.verifyUser, authController.verifyOTP)
-router.route('/createresetsession').get(authController.createResetSession)
+router.post('/login', authController.login)
+router.post('/reset-password', authController.resetPass)
+router.post('/update-password', authController.updatePass)
+router.post('/verify-reset-token', authController.verifyResetToken)
+router.get('/createresetsession', authController.createResetSession)
 
 
 
-router.route('/resetpassword').put(authController.verifyUser, authController.resetPassword)
-router.route('/updateuser').put(verifyToken, authController.updateUser)
-
-
-
-export { router }
+export default router

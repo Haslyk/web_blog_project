@@ -1,91 +1,82 @@
-import Event from "../models/Event.js"
-import PastEvent from "../models/PastEvent.js"
-import User from "../models/User.js"
-
-
-// CREATE AN EVENT
-export async function createEvent(req, res) {
-    try {
-        const { userId } = req.user
-
-        if (userId) {
-            const { event, link } = req.body
-            const newEvent = new Event({ event, link })
-
-            try {
-                const user = await User.findById(userId)
-                if (user.isAdmin) {
-                    const event = await newEvent.save()
-                    return res.status(201).json({ event, msg: 'Event Added' })
-                }
-                else {
-                    return res.status(401).json({ error: 'Not Authorized' })
-                }
-            }
-            catch (error) {
-                return res.status(401).json(error)
-            }
-        }
-    }
-    catch (error) {
-        return res.status(404).json(error)
-    }
-}
-
-
+import db from "../config/db.js";
 
 // GET ALL EVENTS
 export async function getEvents(req, res) {
-    try {
-        const events = await Event.find()
+  try {
+    const query = `SELECT * from events WHERE active = 1`;
 
-        return res.status(200).json(events.reverse())
-    }
-    catch (error) {
-        return res.status(500).json(error)
-    }
+    db.query(query, (error, result) => {
+      res.status(200).json(result);
+    });
+  } catch (error) {
+    return res.status(500).json(error);
+  }
 }
 
+export async function addEvent(req, res) {
+  try {
+    const { title, text } = req.body;
+    const fileName = req.file ? req.file?.filename : "default.png";
 
-// POST YOUTUBE VIDEO EMBEDDED LINK TO DATABASE
-export async function addPastEvent(req, res) {
-    try {
-        const { userId } = req.user
-
-        if (userId) {
-            const { eventName, eventLink } = req.body
-            const pastEvent = new PastEvent({ eventName, eventLink })
-
-            try {
-                const user = await User.findById(userId)
-                if (user.isAdmin) {
-                    const event = await pastEvent.save()
-                    return res.status(201).json({ event, msg: 'Past Event Added' })
-                }
-                else {
-                    return res.status(401).json({ error: 'Not Authorized' })
-                }
-            }
-            catch (error) {
-                return res.status(401).json(error)
-            }
-        }
-    }
-    catch (error) {
-        return res.status(404).json(error)
-    }
+    const query = `
+            INSERT INTO events (title, text, image) 
+            VALUES (?, ? , ?)
+        `;
+    db.query(query, [title, text, fileName], (error, result) => {
+      if (result) {
+        res.status(200).json(result);
+      } else {
+        console.log("Hata:", error);
+      }
+    });
+  } catch (error) {
+    console.error("Bir hata oluştu:", error);
+  }
 }
 
+export async function updateEvent(req, res) {
+  try {
+    const { id, title, text, file } = req.body;
+    const fileName = req.file ? req.file?.filename : file;
 
+    const query = `
+            UPDATE events
+            SET title = ? , text = ?, image = ?
+            WHERE id = ?
+        `;
+    db.query(query, [title, text, fileName, id], (error, result) => {
+      if (result) {
+        res.status(200).json(result);
+      } else {
+        console.log("Hata:", error);
+      }
+    });
+  } catch (error) {
+    console.error("Bir hata oluştu:", error);
+  }
+}
 
-// GET PAST EVENTS
+export async function deleteEvent(req, res) {
+  try {
+    const id = req.body.id;
+    const query = `UPDATE events SET active = 0 WHERE id = ?`;
+
+    db.query(query, [id], (error, result) => {
+      res.status(200).json(result);
+    });
+  } catch (error) {
+    return res.status(500).json(error);
+  }
+}
+
 export async function getPastEvents(req, res) {
-    try {
-        const pastEvents = await PastEvent.find()
+  try {
+    const query = `SELECT * from events`;
 
-        return res.status(200).json(pastEvents)
-    }
-    catch (error) {
-        return res.status(500).json(error)
-    }
+    db.query(query, (error, result) => {
+      res.status(200).json(result);
+    });
+  } catch (error) {
+    return res.status(500).json(error);
+  }
 }

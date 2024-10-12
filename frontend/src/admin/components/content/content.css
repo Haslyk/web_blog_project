@@ -1,0 +1,19 @@
+
+.card-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 4%;
+}
+
+.card-btn {
+    width: 48%;
+    padding: 2%;
+    color: #fff;
+    border-radius: 5px;
+    transition: all 200ms ease-in-out;
+}
+
+.card-btn:hover {
+    opacity: .70;
+}

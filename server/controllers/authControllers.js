@@ -1,203 +1,156 @@
-import CryptoJS from 'crypto-js'
-import jwt from 'jsonwebtoken'
-import User from '../models/User.js'
-import otpGenerator from 'otp-generator'
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
+import db from "../config/db.js";
+import nodemailer from "nodemailer";
 
-
-
-export async function verifyUser(req, res, next) {
-    try {
-        const { username } = req.method === 'GET' ? req.query : req.body
-
-        let exist = await User.findOne({ username })
-        if (!exist) return res.status(404).json({ error: 'Username not found' })
-
-        next()
-    }
-    catch (error) {
-        return res.status(404).json({ error: 'Authentication Error' })
-    }
-}
-
-
-
-// REGISTER
-export async function register(req, res) {
-    const { name, username, email, password } = req.body
-
-    const newUser = new User({
-        name: name,
-        username: username,
-        email: email,
-        password: CryptoJS.AES.encrypt(
-            password,
-            process.env.SECRET_KEY
-        ).toString()
-    })
-
-    try {
-        const user = await newUser.save()
-        res.status(201).json({ user, status: 'User created successfully' })
-    }
-    catch (error) {
-        let message = {}
-        Object.entries(error.errors).forEach(([key, val]) => {
-            message = { ...message, [key]: val.message }
-        })
-        res.status(500).json(message)
-    }
-}
-
-
-// LOGIN
 export async function login(req, res) {
+  try {
+    const { email, password } = req.body;
+    const hashedPass = crypto.createHash("md5").update(password).digest("hex");
 
-    try {
-        const user = await User.findOne({ email: req.body.email })
-        if (!user) {
-            return res.status(401).json('User not found')
-        }
+    const query = `
+            SELECT * from controls WHERE email = ? AND password = ?
+        `;
 
-        const decrypted = CryptoJS.AES.decrypt(user.password, process.env.SECRET_KEY)
-        const originalPassword = decrypted.toString(CryptoJS.enc.Utf8)
+    db.query(query, [email, hashedPass], (error, result) => {
+      if (result.length > 0) {
+        const secret_key = process.env.JWT_SECRET || "";
 
-        if (originalPassword !== req.body.password) {
-            return res.status(401).json('Wrong Password')
-        }
-
-        /* Create JWT token */
         const accessToken = jwt.sign(
-            {
-                userId: user._id,
-                username: user.username
+          {
+            id: result[0].id,
+            email: result[0].email,
+            full_name: result[0].full_name,
+          },
+          secret_key,
+          { expiresIn: "10h" }
+        );
+        res
+          .status(200)
+          .json({
+            result: true,
+            user: {
+              ...result[0],
+              id: result[0].id,
+              email: result[0].email,
+              full_name: result[0].full_name,
             },
-            process.env.SECRET_KEY,
-            { expiresIn: '4d' }
-        )
-
-        const { _id, username, email, password, isAdmin, createdAt, updatedAt, __v, ...info } = user._doc
-
-        return res.status(200).json({ ...info, accessToken })
-    }
-    catch (error) {
-        res.status(500).json(error)
-    }
+            access_token: accessToken,
+          });
+      } else {
+        res.status(401).json({ data: "Hatalı Giriş" });
+      }
+    });
+  } catch (error) {
+    res.status(500).json(error);
+  }
 }
 
+export async function verifyResetToken(req, res) {
+  const { email, token } = req.body;
+  const hashedToken = crypto.createHash("md5").update(token).digest("hex");
 
-export async function getUser(req, res) {
-    const { username } = req.params
-
-    try {
-        if (!username) return res.status(501).json({ error: 'Username not provided' })
-
-        User.findOne({ username })
-            .then((user) => {
-                if (!user) return res.status(501).json({ error: "Couldn't find user" })
-
-                const { password, ...info } = user._doc
-                return res.status(200).json(info)
-            })
-            .catch((error) => {
-                return res.status(500).json(error)
-            })
+  const query = `
+        SELECT * from controls WHERE email = ? AND reset_token = ?
+    `;
+  db.query(query, [email, hashedToken], (error, result) => {
+    if (result.length > 0) {
+      res.status(200).json({ valid: true });
+    } else {
+      res.status(400).json({ valid: false });
     }
-    catch (error) {
-        return res.status(404).json({ error: "Can't find user data" })
-    }
+  });
 }
-
-
-export async function generateOTP(req, res) {
-    req.app.locals.OTP = await otpGenerator.generate(6,
-        {
-            lowerCaseAlphabets: false,
-            upperCaseAlphabets: false,
-            specialChars: false
-        }
-    )
-
-    res.status(201).json({ code: req.app.locals.OTP })
-}
-
-
-export async function verifyOTP(req, res) {
-    const { code } = req.query
-    if (!code) return res.status(400).json({ error: "OTP isn't provided" })
-
-    if (parseInt(req.app.locals.OTP) === parseInt(code)) {
-        req.app.locals.OTP = null
-        req.app.locals.resetSession = true
-
-        return res.status(201).json({ msg: 'Verified Successfully' })
-    }
-    return res.status(400).json({ error: 'Invalid OTP' })
-}
-
 
 export async function createResetSession(req, res) {
-    if (req.app.locals.resetSession) {
-        return res.status(201).json({ flag: req.app.locals.resetSession })
-    }
-    return res.status(404).json({ error: 'Session Expired' })
+  if (req.app.locals.resetSession) {
+    return res.status(201).json({ flag: req.app.locals.resetSession });
+  }
+  return res.status(404).json({ error: "Session Expired" });
 }
 
+export async function resetPass(req, res) {
+  const { email } = req.body;
 
-export async function resetPassword(req, res) {
-    try {
-        if (!req.app.locals.resetSession) return res.status(404).json({ error: 'Session Expired' })
+  const query = `
+        SELECT * from controls WHERE email = ?
+    `;
+  db.query(query, [email], (error, result) => {
+    if (result.length > 0) {
+      const resetToken = crypto.randomBytes(32).toString("hex");
+      const hashedToken = crypto
+        .createHash("md5")
+        .update(resetToken)
+        .digest("hex");
 
-        const { username, password } = req.body
+      const updateQuery = `
+                UPDATE controls SET reset_token = ? WHERE email = ?
+            `;
+
+      db.query(updateQuery, [hashedToken, email], async (updateError) => {
+        if (updateError) {
+          return res
+            .status(500)
+            .json({ error: "Failed to update reset token" });
+        }
+
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          },
+        });
+
+        const mailOptions = {
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: "Password Reset",
+          html: `
+                        <p>You requested a password reset</p>
+                        <p>Click this <a href="http://localhost:3000/reset-password?token=${resetToken}&email=${email}">link</a> to reset your password</p>
+                    `,
+        };
 
         try {
-            User.updateOne(
-                { username },
-                {
-                    password: CryptoJS.AES.encrypt(
-                        password,
-                        process.env.SECRET_KEY
-                    ).toString()
-                }
-            )
-                .then((data) => {
-                    return res.status(201).json({ msg: 'Password Updated' })
-                })
-                .catch((err) => {
-                    throw err
-                })
-            req.app.locals.resetSession = false
+          let info = await transporter.sendMail(mailOptions);
+          console.log("Message sent: %s", info.messageId);
+          res
+            .status(200)
+            .json({ message: "Sıfırlama linki mailinize gönderildi!" });
+        } catch (mailError) {
+          console.log("ERRROR:", mailError);
+          res.status(500).json({ error: "Failed to send email" });
         }
-        catch (error) {
-            return res.status(500).json(error)
-        }
+      });
+    } else {
+      res.status(404).json({ error: "Email not found" });
     }
-    catch (error) {
-        return res.status(401).json(error)
-    }
+  });
 }
 
+export async function updatePass(req, res) {
+    const { email, token, newPassword } = req.body;
+    
+    const hashedToken = crypto.createHash('md5').update(token).digest('hex');
+    const hashedPassword = crypto.createHash('md5').update(newPassword).digest('hex');
 
-export async function updateUser(req, res) {
-    try {
-        // const userId = req.query.id
-        const { userId } = req.user
-
-        if (userId) {
-            const body = req.body
-
-            User.updateOne({ _id: userId }, body)
-                .then((data) => {
-                    return res.status(201).json({ msg: 'Record Updated' })
-                })
-                .catch((err) => {
-                    throw err
-                })
+    const query = `
+        SELECT * from controls WHERE email = ? AND reset_token = ?
+    `;
+    db.query(query, [email, hashedToken], (error, result) => {
+        if (result.length > 0) {
+            const updateQuery = `
+                UPDATE controls SET password = ?, reset_token = NULL WHERE email = ?
+            `;
+            db.query(updateQuery, [hashedPassword, email], (updateError) => {
+                if (updateError) {
+                    return res.status(500).json({ error: 'Failed to update password' });
+                }
+                res.status(200).json({ message: 'Password successfully updated' });
+            });
+        } else {
+            res.status(400).json({ error: 'Invalid token or email' });
         }
-        else {
-            return res.status(401).json({error: 'User not found'})
-        }
-    }
-    catch (error) {
-        res.status(401).json(error)
-    }
+    });
 }
